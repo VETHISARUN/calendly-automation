@@ -49,7 +49,7 @@ async function automateCalendly({ url, targetMonth, targetDay, desiredTime, name
 
     try {
         browser = await puppeteer.launch({
-            headless: true, // always headless on Railway
+            headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
