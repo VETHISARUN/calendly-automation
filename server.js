@@ -54,7 +54,15 @@ async function automateCalendly() {
         browser = await puppeteer.launch({
             headless: true,
             defaultViewport: null,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-zygote',
+                '--disable-gpu',
+                '--window-size=1920,1080',
+              ]
         });
 
         page = await browser.newPage();
