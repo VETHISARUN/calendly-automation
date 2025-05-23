@@ -1,11 +1,10 @@
-// server.js
 const express = require('express');
 const puppeteer = require('puppeteer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Helper to close browser and page safely with a message
+// Helper to safely close browser and page
 async function safeExit(page, browser, message) {
     console.log(message);
     if (page) await page.close();
@@ -13,7 +12,7 @@ async function safeExit(page, browser, message) {
     return { success: false, message };
 }
 
-// Scroll through available time buttons and click desired time if found
+// Scroll and click time button
 async function scrollAndClickTime(page, desiredTime, maxScrolls = 20) {
     const scrollableDiv = await page.$('div[data-component="spot-list"]');
     if (!scrollableDiv) return false;
@@ -42,8 +41,8 @@ async function scrollAndClickTime(page, desiredTime, maxScrolls = 20) {
     return false;
 }
 
-// Main function to automate Calendly scheduling
-async function automateCalendly() {
+// Main function with parameters from request
+async function automateCalendly({ targetMonth, targetDay, desiredTime, fullName, email, guestEmails = [], note }) {
     let browser, page;
     try {
         browser = await puppeteer.launch({
@@ -67,11 +66,6 @@ async function automateCalendly() {
             const cookieBtn = await page.waitForSelector('.onetrust-close-btn-handler', { timeout: 5000 });
             await cookieBtn.click();
         } catch {}
-
-        // Target scheduling details
-        const targetMonth = "July 2025";
-        const targetDay = "9";
-        const desiredTime = "1:00pm";
 
         // Navigate to the desired month
         while (true) {
@@ -115,30 +109,33 @@ async function automateCalendly() {
 
         // Fill in user details
         await page.waitForSelector('#full_name_input');
-        await page.type('#full_name_input', 'Tester');
-        await page.type('#email_input', 'tester@example.com');
+        await page.type('#full_name_input', fullName);
+        await page.type('#email_input', email);
 
         // Add guest emails if possible
-        const guestEmails = ["guest1@example.com", "guest2@example.com"];
-        const addGuestsBtnHandle = await page.evaluateHandle(() =>
-            Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes('Add Guests'))
-        );
-        const addGuestsBtn = addGuestsBtnHandle?.asElement();
-        if (addGuestsBtn) {
-            await addGuestsBtn.click();
-            const guestInput = await page.waitForSelector('#invitee_guest_input');
-            for (const email of guestEmails) {
-                await guestInput.type(email);
-                await page.keyboard.press('Enter');
-                await page.waitForTimeout(300);
+        if (guestEmails.length > 0) {
+            const addGuestsBtnHandle = await page.evaluateHandle(() =>
+                Array.from(document.querySelectorAll('button')).find(btn => btn.textContent.includes('Add Guests'))
+            );
+            const addGuestsBtn = addGuestsBtnHandle?.asElement();
+            if (addGuestsBtn) {
+                await addGuestsBtn.click();
+                const guestInput = await page.waitForSelector('#invitee_guest_input');
+                for (const guestEmail of guestEmails) {
+                    await guestInput.type(guestEmail);
+                    await page.keyboard.press('Enter');
+                    await page.waitForTimeout(300);
+                }
             }
         }
 
-        // Add a note if the textarea is available
-        try {
-            const noteTextarea = await page.waitForSelector('textarea[name="question_0"]', { timeout: 5000 });
-            await noteTextarea.type('Looking forward to it.');
-        } catch {}
+        // Add a note if provided and textarea available
+        if (note) {
+            try {
+                const noteTextarea = await page.waitForSelector('textarea[name="question_0"]', { timeout: 5000 });
+                await noteTextarea.type(note);
+            } catch {}
+        }
 
         // Click the final schedule button
         const scheduleBtnHandle = await page.evaluateHandle(() =>
@@ -171,12 +168,36 @@ async function automateCalendly() {
     }
 }
 
-// Express endpoint to trigger scheduling
+// GET endpoint that reads parameters from query string
 app.get('/schedule', async (req, res) => {
-    const result = await automateCalendly();
+    const {
+        targetMonth,
+        targetDay,
+        desiredTime,
+        fullName,
+        email,
+        guestEmails,  // comma-separated string
+        note
+    } = req.query;
+
+    if (!targetMonth || !targetDay || !desiredTime || !fullName || !email) {
+        return res.status(400).json({ success: false, message: 'Missing required parameters' });
+    }
+
+    const guestsArray = guestEmails ? guestEmails.split(',').map(e => e.trim()) : [];
+
+    const result = await automateCalendly({
+        targetMonth,
+        targetDay,
+        desiredTime,
+        fullName,
+        email,
+        guestEmails: guestsArray,
+        note
+    });
     res.json(result);
 });
 
 app.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server running on http://localhost:${PORT}`);
 });
